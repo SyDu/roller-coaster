@@ -1,23 +1,24 @@
 //
 //  main.c
-//  Asteroid
+//  Roller_Coaster
 //
-//  Created by mac on 2018-06-04.
+//  Created by mac on 2018-07-25.
 //  Copyright © 2018 mac. All rights reserved.
 //
 /*
- this is Siyi Du B00750733 assignment 1
- 2018-jun-9
+ B00750733
  */
-#include <stdlib.h>
-#include <string.h>
-#include <time.h>
-#include <math.h>
-#include <GLUT/GLUT.h>
-#ifndef M_PI
-#define M_PI 3.14159265358979323846
-#endif
 
+
+
+/*
+ keyboard
+ press [spacebar]--> switch camera (inside<->outside)
+ press [q]--> quit the project
+ */
+#include <stdio.h>
+#include <GLUT/GLUT.h>
+#include <math.h>
 #define RAD2DEG 180.0/M_PI
 #define DEG2RAD M_PI/180.0
 
@@ -25,713 +26,324 @@
 #define myScale2D(x,y) glScalef(x, y, 1.0)
 #define myRotate2D(angle) glRotatef(RAD2DEG*angle, 0.0, 0.0, 1.0)
 
+//Attributes
+//for each points data structure
+typedef struct Points {
+    float x;
+    float y;
+    float z;
+}point;
 
-#define MAX_PHOTONS    8
-#define MAX_ASTEROIDS    7
-#define MAX_VERTICES    16
-
-/*
- define speed
- */
-#define PhotonSPEED 0.002
-#define AsteroidSpeed 0.0003
-#define ShipSpeed 0.0006
-
-#define drawCircle() glCallList(circle)
-
-
-static GLuint    circle;
-void
-buildCircle() {
-    GLint   i;
-    
-    circle = glGenLists(1);
-    glNewList(circle, GL_COMPILE);
-    glBegin(GL_POLYGON);
-    for(i=0; i<40; i++)
-        glVertex2d(cos(i*M_PI/20.0), sin(i*M_PI/20.0));
-    glEnd();
-    glEndList();
-}
-
-/* -- type definitions ------------------------------------------------------ */
-
-typedef struct Coords {
-    double        x, y;
-} Coords;
-
-typedef struct{
-    double    x, y, phi, dx, dy;
-    double cor[3];
-} Ship;
-
-typedef struct {
-    int    active;
-    double    x, y, dx, dy,ang;
-} Photon;
-
-typedef struct {
-    int    active, nVertices;
-    double    x, y, phi, dx, dy, dphi,size;
-    Coords    coords[MAX_VERTICES];
-} Asteroid;
+float maxX,maxY,maxZ,theta,pointsize=18;
+int camera=0;
+float insidemove=0;
+point pois[18],q,qp,qpp,n,w,v;
+point eye,up,aim;//for glulookat
 
 
-/* -- function prototypes --------------------------------------------------- */
+//  camera 0 outside camera state, camera 1 inside camera
 
-static void    myDisplay(void);
-static void    myKey(unsigned char key, int x, int y);
-static void    keyPress(int key, int x, int y);
-static void    keyRelease(int key, int x, int y);
-static void    myReshape(int w, int h);
+// Announce method
+void myTimer(int value);
+void myDisplay(void);
+void myReshape(int w,int h);
+void drawGound(void);
+void drawSky(void);
+void curvedegrer1(float x);
+void curvedegrer2(float x);
+void curvedegrer3(float x);
+void initPoints(void);
+void getNWV(void);
+void drawCurve(void);
+void cover(void);
+static void key(unsigned char key, int x, int y);
 
-static void    init(void);
-static void    drawShip(Ship *s);
-static void    drawPhoton(Photon *p);
-static void    drawAsteroid(Asteroid *a);
-
-static double myRandom(double min, double max);
-
-static void myIdle();
-static void myMouse(int button, int state, int x,int y);
-static void getgrade();
-static char* intToChar(int n);
-static double transCoordX(double x,double y,double phi);
-static double transCoordY(double x,double y,double phi);
-
-/* -- global variables ------------------------------------------------------ */
-
-static int    up=0, down=0, left=0, right=0,pau=0,dead=0,turn=0,gameov=0 ;    /* state of cursor keys */
-static double    xMax, yMax;
-static Ship    ship;
-static Coords coord;
-static Photon    photons[MAX_PHOTONS];
-static Asteroid    asteroids[MAX_ASTEROIDS];
-static int grade=0;
-static double speedShip=ShipSpeed;
-
+point setpoint(float x,float y,float z);
 
 int main(int argc, const char * argv[]) {
-    ship.cor[0]=1,ship.cor[1]=1,ship.cor[2]=1;
     glutInit(&argc, argv);
-    glutInitDisplayMode(GLUT_DOUBLE|GLUT_RGB);
-    glutInitWindowSize(800, 600);
-    glutCreateWindow("Asteroids");
-    buildCircle();
+    glutInitDisplayMode(GLUT_DOUBLE|GLUT_RGB|GLUT_DEPTH);
+    glutInitWindowSize(650, 500);
+    glutCreateWindow("RollerCoaster");
+    //write the display
     glutDisplayFunc(myDisplay);
-    glutIgnoreKeyRepeat(1);
-    glutKeyboardFunc(myKey);
-    glutSpecialUpFunc(keyRelease);
-    glutIdleFunc(myIdle);
-    glutSpecialFunc(keyPress);
-    
+    //set the key
+    glutKeyboardFunc(key);
+    //reshape
     glutReshapeFunc(myReshape);
-    glutMouseFunc(myMouse);
+    //set timmer
+    glutTimerFunc(33, myTimer, 0);
     glClearColor(0.0, 0.0, 0.0, 1.0);
-    glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
-    init();
-    
+    //fill the points
+    initPoints();
     glutMainLoop();
-    
-    
+
     return 0;
 }
 
-/* -- callback functions ---------------------------------------------------- */
-static void getgrade()
+void myTimer(int value)
 {
-    char *c;
-    glColor3f(1, 0, 1);
-    
-    if (gameov==1||grade==MAX_ASTEROIDS*20) {
-        if (grade==MAX_ASTEROIDS*20) {
-            c="You win!!! press[o] restarted,Grade- 0 ";
-            
-        }else{
-            c="Game Over! press[o] restarted,Grade- 0 ";}
-        glRasterPos2f(-0.5, 0);
-        
-    }else
+    //control the insidemove smaller than size(make it move as circle)
+    if (insidemove>=pointsize-3)
     {
-        c="Grade: ";
-        glRasterPos2f(-0.9, 0.9);
+        insidemove=0.0;
+
     }
+    curvedegrer1(insidemove);
+    //get q
+    curvedegrer2(insidemove);
+    //get qp
+    eye.x=q.x;
+    eye.y=q.y*1.25;
+    eye.z=q.z;
+    aim.x=eye.x+qp.x;
+    aim.y=(q.y+qp.y)*1.25;
+    aim.z=eye.z+qp.z;
+    insidemove+=0.03;//inside move speed
     
-    for (c; *c!='\0'; c++) {
-        glutBitmapCharacter(GLUT_BITMAP_TIMES_ROMAN_24, *c);
-    }
-    if (grade!=0) {
-        
-        char *x=intToChar(grade);
-        for (x; *x!='\0'; x++) {
-            glutBitmapCharacter(GLUT_BITMAP_TIMES_ROMAN_24, *x);
-            
-        }
-        
-    }
-    if (grade==MAX_ASTEROIDS*20) {
-        gameov=1;
-    }
-    glFlush();
-    
-}
-static void    keyPress(int key, int x, int y)
-{
-    
-    if (key==GLUT_KEY_LEFT) {
-        printf("left\n");
-        left=1;
-    }
-    else if(key==GLUT_KEY_RIGHT)
-    {
-        printf("right\n");
-        right=1;
-    }else if(key==GLUT_KEY_UP)
-    {
-        up=1;
-        printf("up\n");
-    }else if(key==GLUT_KEY_DOWN)
-    {
-        down=1;
-        printf("Down\n");
-    }
+    theta += 0.02;//outside move spped
+    //printf("%f %f %f \n",q.x,q.y,q.z);
     glutPostRedisplay();
-    
-    
-}
-static void    keyRelease(int key, int x, int y)
-{
-    if (key==GLUT_KEY_LEFT) {
-        
-        left=0;
-        printf("turn up\n");
-    }
-    else if(key==GLUT_KEY_RIGHT)
-    {
-        
-        right=0;
-        printf("turn up\n");
-        
-    }else if(key==GLUT_KEY_UP)
-    {
-        up=0;
-        printf("turn up\n");
-        
-    }else if(key==GLUT_KEY_DOWN)
-    {
-        down=0;
-        printf("turn up\n");
-        
-    }
-    glutPostRedisplay();
-    
+    glutTimerFunc(33, myTimer, value);
 }
 
-void
-myDisplay()
+void myDisplay(void)
 {
-    /*
-     *    display callback function
-     */
+    glClear(GL_COLOR_BUFFER_BIT|GL_DEPTH_BUFFER_BIT);
+    glMatrixMode(GL_MODELVIEW);
+    glLoadIdentity();
     
-    int    i;
-    
-    
-    glClear(GL_COLOR_BUFFER_BIT);
-    if (gameov==0) {
-        
-        glLoadIdentity();
-        getgrade();
-        glLoadIdentity();
-        
-        drawShip(&ship);
-        
-        
-        
-        for (i=0; i<MAX_PHOTONS; i++)
-            if (photons[i].active)
-                drawPhoton(&photons[i]);
-        
-        for (i=0; i<MAX_ASTEROIDS; i++)
-        {
-            
-            drawAsteroid(&asteroids[i]);
-            
-        }
-    }else
+    //choose Camera
+    if(camera%2==0) //outside
     {
-        glLoadIdentity();
-        getgrade();
+        gluLookAt( 100*cos(theta),  20,  -100*sin(theta),
+                  0,  0,  0,
+                  0,  1,  0);
     }
-    
+    else//inside
+    {
+        gluLookAt( eye.x,  eye.y,  eye.z,
+                  aim.x,  aim.y,  aim.z,
+                  up.x,  up.y,  up.z);
+    }
+    //set ground
+    drawGound();
+    //set sky
+    glPushMatrix();
+    glTranslated(0, -1.5, 0);
+    glRotated(-90.0, 1, 0, 0);
+    drawSky();
+    glPopMatrix();
+    cover();
+    //set tracke
+    drawCurve();
     glutSwapBuffers();
-}
 
-//***************************************- asteroids -*****************************************
-static void    drawAsteroid(Asteroid *a)
-
-{
-    
-    double    theta, r;
-    int        i;
-    glLoadIdentity();
-    if (a->nVertices<6) {
-        do{
-            a->size=0.10;
-            a->dx =myRandom(-0.9,0.9);
-            a->dy = myRandom(-0.9, 0.9);
-        }while ((a->dx>0.7||a->dx<-0.7)&&(a->dy>0.7||a->dy<-0.7));
-        a->nVertices = 6+rand()%(MAX_VERTICES-6);
-        a->dphi=myRandom(0, 360);
-        glRotatef(a->phi, 0, 0, 1);
-        myTranslate2D(a->x+a->dx, a->y+a->dy);
-        glColor3f(0, 1, 1);
-        
-        glBegin(GL_LINE_LOOP);
-        for (i=0; i<a->nVertices; i++)
-        {
-            theta = 2.0*M_PI*i/a->nVertices;
-            r = a->size;
-            a->coords[i].x = -r*sin(theta);
-            a->coords[i].y = r*cos(theta);
-            glVertex2f( a->coords[i].x,a->coords[i].y);
-        }
-        glEnd();
-        a->active=1;
-        glFlush();
-    }
-    else
-    {   if(a->active==1)
-    {{
-        myTranslate2D(a->x+a->dx, a->y+a->dy);
-        glRotatef(a->phi, 0, 0, 1);
-        glColor3f(0, 1, 1);
-        
-        
-        glBegin(GL_LINE_LOOP);
-        for (i=0; i<a->nVertices; i++)
-        {
-            theta = 2.0*M_PI*i/a->nVertices;
-            r = a->size;
-            a->coords[i].x = -r*sin(theta);
-            a->coords[i].y = r*cos(theta);
-            glVertex2f(a->coords[i].x,a->coords[i].y);
-        }
-        glEnd();
-        glFlush();
-    }}
-    }
     
 }
-//***************************************- Ships -*****************************************
-static void    drawShip(Ship *s)
+void cover()
 {
-    s->x=0;
-    s->y=0;
-    myTranslate2D(s->x+s->dx,s->y+s->dy);
-    glRotatef(s->phi, 0, 0, 1);
-    glColor3f(ship.cor[0],ship.cor[1],ship.cor[2]);
-    
-    glBegin(GL_TRIANGLES);
-    glVertex2f(0, 0);
-    glVertex2f(-0.02, -0.02);
-    glVertex2f(0.02, -0.02);
+    glBegin(GL_QUADS);
+    glVertex3f(100, 100, -100);
+    glVertex3f(100, 100, 100);
+    glVertex3f(-100, 100, 100);
+    glVertex3f(-100, 100, -100);
     glEnd();
-    glFlush();
-    
 }
 
-//***************************************- photon -*****************************************
-
-static void drawPhoton(Photon *p)
+void myReshape(int w,int h)
 {
-    glLoadIdentity();
-    myTranslate2D(p->x+p->dx, p->y+p->dy);
-    glColor3f(1,0,0);
-    glBegin(GL_POINTS);
-    glVertex2i(0, 0);
-    glEnd();
-    glFlush();
-    
-    
-    
-}
-
-//***************************************- Keyboards  -*****************************************
-
-
-static void    myKey(unsigned char key, int x, int y)
-{
-    //go left
-    
-    if(key==' ')
-    {
-        for (int i=0; i<MAX_PHOTONS; i++) {
-            if (photons[i].active==0)
-            {
-                photons[i].active=1;
-                photons[i].x=ship.dx;
-                photons[i].y=ship.dy;
-                photons[i].ang=ship.phi;
-                
-                //printf("%f %f\n",ship.dx,ship.dy);
-                break;
-            }
-        }
-    }
-    else if(key=='p'||key=='P')
-    {
-        pau=1;
-    }
-    else if(key=='o'||key=='O')
-    {
-        gameov=0;
-        
-        if (grade==MAX_ASTEROIDS*20||dead==1) {
-            
-            
-            for (int i=0; i<MAX_ASTEROIDS; i++) {
-                asteroids[i].size=0.04;
-                asteroids[i].active=1;
-                photons[i].dx=0;
-                photons[i].dy=0;
-                photons[i].active=0;
-            }
-            grade=0;
-            dead=0;
-            
-            
-        }
-        
-        pau=0;
-    }
-    if (key=='I'||key=='i') {
-        exit(0);
-    }
-    //turn around the ship
-    if (key=='F'||key=='f') {
-        if (turn==0) {
-            turn=1;
-        }else
-        {
-            turn=0;
-        }
-    }
-    
-    glutPostRedisplay();
-    
-}
-
-//-----------------------------------moving ship method----------------------------------------
-
-static void myIdle()
-{
-    if (gameov==1) {
-        ship.dx=0;
-        ship.dy=0;
-        for (int t=0; t<MAX_ASTEROIDS; t++) {
-            asteroids[t].nVertices=0;
-            asteroids[t].active=1;
-        }
-        for (int i=0; i<MAX_PHOTONS; i++) {
-            photons[i].dx=0;
-            photons[i].dy=0;
-            
-            photons[i].active=0;
-            
-        }
-        
-        
-    }
-    else if (!pau) {
-        
-        /****************************************************************************************
-         ---------------------------------- Touch event------------------------------------------
-         ****************************************************************************************/
-        for (int i=0; i<MAX_PHOTONS; i++) {
-            for (int j=0; j<MAX_ASTEROIDS; j++) {
-                double x1=asteroids[j].dx+asteroids[j].x,
-                x2=photons[i].dx+photons[i].x,
-                y1=asteroids[j].dy+asteroids[j].y,
-                y2=photons[i].dy+photons[i].y;
-                if (((x1-x2)*(x1-x2)+(y1-y2)*(y1-y2)<((asteroids[j].size)*(asteroids[j].size)))&&photons[i].active&&asteroids[j].active) {
-                    grade+=10;
-                    if (asteroids[j].size==0.1) {
-                        asteroids[j].size=0.05;
-                    }
-                    else
-                    {
-                        asteroids[j].active=0;
-                        photons[i].dx=0;
-                        photons[i].dy=0;
-                        photons[i].active=0;
-                        
-                    }
-                    
-                }
-                
-            }
-        }
-        for (int j=0; j<MAX_ASTEROIDS; j++) {
-            if ((asteroids[j].dx-ship.dx)*(asteroids[j].dx-ship.dx)+(asteroids[j].dy-ship.dy)*(asteroids[j].dy-ship.dy)<(asteroids[j].size*asteroids[j].size))
-            {
-                printf("%f\n",ship.phi);
-                gameov=1;
-                dead=1;
-                printf("11111\n");
-            }
-            else if((asteroids[j].dx-(ship.dx+transCoordX(-0.02, -0.02, ship.phi)))*(asteroids[j].dx-(ship.dx+transCoordX(-0.02, -0.02, ship.phi)))+(asteroids[j].dy-(ship.dy+transCoordY(-0.02, -0.02, ship.phi)))*(asteroids[j].dy-(ship.dy+transCoordY(-0.02, -0.02, ship.phi)))<(asteroids[j].size*asteroids[j].size))
-            {
-                printf("%f\n",ship.phi);
-                
-                dead=1;
-                gameov=1;
-                printf("22222\n");
-                
-                
-                
-                
-            }
-            else if ((asteroids[j].dx-(ship.dx+transCoordX(0.02, -0.02, ship.phi)))*(asteroids[j].dx-(ship.dx+transCoordX(0.02, -0.0, ship.phi)))+(asteroids[j].dy-(ship.dy+transCoordY(0.02, -0.02, ship.phi)))*(asteroids[j].dy-(ship.dy+transCoordY(0.02, -0.02, ship.phi)))<(asteroids[j].size*asteroids[j].size))
-            {
-                
-                printf("%f\n",ship.phi);
-                
-                
-                dead=1;
-                gameov=1;
-                printf("3333333\n");
-                
-            }
-            
-            /****************************************************************************************
-             ---------------------------------- ships event------------------------------------------
-             ****************************************************************************************/
-            if (right==1) {
-                if (ship.phi>0) {
-                    ship.phi-=1;
-                    
-                }
-                else
-                {
-                    ship.phi=360;
-                }
-            }
-            if (left==1) {
-                if (ship.phi<360) {
-                    ship.phi+=1;
-                    
-                }
-                else
-                {
-                    ship.phi=0;
-                    
-                }
-                
-            }
-            if (up==1) {
-                speedShip*=1.005;
-                speedShip*=1.005;
-            }
-            if (down==1)
-            {
-                speedShip*=0.995;
-                speedShip*=0.995;
-            }
-            
-            if (ship.dx<=1&&ship.dx>=-1&&ship.dy<=1&&ship.dy>=-1) {
-                if (ship.phi>=0&&ship.phi<90)
-                {
-                    ship.dy=ship.dy+speedShip*(cos(ship.phi*DEG2RAD));
-                    ship.dx=ship.dx-speedShip*(sin(ship.phi*DEG2RAD));
-                    
-                }else if(ship.phi>=90&&ship.phi<180)
-                {
-                    ship.dy=ship.dy-speedShip*(sin((ship.phi-90)*DEG2RAD));
-                    ship.dx=ship.dx-speedShip*(cos((ship.phi-90)*DEG2RAD));
-                }else if (ship.phi>=180&&ship.phi<270)
-                {
-                    ship.dy=ship.dy-speedShip*(cos((ship.phi-180)*DEG2RAD));
-                    ship.dx=ship.dx+speedShip*(sin((ship.phi-180)*DEG2RAD));
-                }else
-                {
-                    ship.dy=ship.dy+speedShip*(sin((ship.phi-270)*DEG2RAD));
-                    ship.dx=ship.dx+ShipSpeed*(cos((ship.phi-270)*DEG2RAD));
-                    
-                }
-                
-            }else if (ship.dx>1)
-            {
-                ship.dx=-1;
-            }else if (ship.dx<-1)
-            {
-                ship.dx=1;
-            }else if(ship.dy>1)
-            {
-                ship.dy=-1;
-            }else if (ship.dy<-1)
-            {
-                ship.dy=1;
-            }
-            
-            //--------------------------------------PHOTONS----------------------------------------------
-            
-            for (int i=0; i<MAX_PHOTONS; i++) {
-                
-                if (photons[i].active) {
-                    if (photons[i].dx<1&&photons[i].dx>-1&&photons[i].dy<1&&photons[i].dy>-1) {
-                        if (photons[i].ang>=0&&photons[i].ang<90)
-                        {
-                            photons[i].dy=photons[i].dy+PhotonSPEED*(cos(photons[i].ang*DEG2RAD));
-                            photons[i].dx=photons[i].dx-PhotonSPEED*(sin(photons[i].ang*DEG2RAD));
-                            
-                        }else if(photons[i].ang>=90&&photons[i].ang<180)
-                        {
-                            photons[i].dy=photons[i].dy-PhotonSPEED*(sin((photons[i].ang-90)*DEG2RAD));
-                            photons[i].dx=photons[i].dx-PhotonSPEED*(cos((photons[i].ang-90)*DEG2RAD));
-                        }else if (photons[i].ang>=180&&photons[i].ang<270)
-                        {
-                            photons[i].dy=photons[i].dy-PhotonSPEED*(cos((photons[i].ang-180)*DEG2RAD));
-                            photons[i].dx=photons[i].dx+PhotonSPEED*(sin((photons[i].ang-180)*DEG2RAD));
-                        }else
-                        {
-                            photons[i].dy=photons[i].dy+PhotonSPEED*(sin((photons[i].ang-270)*DEG2RAD));
-                            photons[i].dx=photons[i].dx+PhotonSPEED*(cos((photons[i].ang-270)*DEG2RAD));
-                            
-                        }
-                        
-                    }
-                    else
-                    {
-                        photons[i].dx=0;
-                        photons[i].dy=0;
-                        
-                        photons[i].active=0;
-                        
-                    }
-                    
-                }
-            }
-            
-            //--------------------------------------Asteroids----------------------------------------------
-            
-            for(int i=0;i<MAX_ASTEROIDS;i++)
-            {
-                if (asteroids[i].active) {
-                    if (asteroids[i].phi<=360) {
-                        asteroids[i].phi+=0.25;
-                    }else
-                    {
-                        asteroids[i].phi=0;
-                    }
-                    if (asteroids[i].dx<0.95&&asteroids[i].dx>-0.95&&asteroids[i].dy<0.95&&asteroids[i].dy>-0.95)
-                    {
-                        asteroids[i].dy=asteroids[i].dy+AsteroidSpeed*(cos(asteroids[i].dphi*DEG2RAD));
-                        asteroids[i].dx=asteroids[i].dx-AsteroidSpeed*(sin(asteroids[i].dphi*DEG2RAD));
-                    }
-                    else
-                    {
-                        asteroids[i].dphi=myRandom(0, 360);
-                        asteroids[i].dy=asteroids[i].dy+AsteroidSpeed*(cos(asteroids[i].dphi*DEG2RAD));
-                        asteroids[i].dx=asteroids[i].dx-AsteroidSpeed*(sin(asteroids[i].dphi*DEG2RAD));
-                        
-                        
-                    }
-                    
-                }
-                for (int j=0; j<MAX_ASTEROIDS; j++) {
-                    if (i!=j&&(asteroids[i].dx-asteroids[j].dx)*(asteroids[i].dx-asteroids[j].dx)+(asteroids[i].dy-asteroids[j].dy)*(asteroids[i].dy-asteroids[j].dy)<(asteroids[i].size+asteroids[j].size)*(asteroids[i].size+asteroids[j].size))
-                    {
-                        asteroids[i].dphi=myRandom(0, 360);
-                        asteroids[i].dy=asteroids[i].dy+AsteroidSpeed*10*(cos(asteroids[i].dphi*DEG2RAD));
-                        asteroids[i].dx=asteroids[i].dx-AsteroidSpeed*10*(sin(asteroids[i].dphi*DEG2RAD));
-                    }
-                }
-                // initAsteroid(&asteroids[i], 0.4, 0.4, 0.3);
-            }
-            
-        }
-        
-    }
-    glutPostRedisplay();
-    
-    
-}
-//*****************************************\\init//*******************************************
-static void    init(void)
-{
-    glPointSize(3.0);
-}
-//**************************************************************************************
-void
-myReshape(int w, int h)
-{
-    /*
-     
-     */
-    
-    xMax = w;
-    yMax = h;
-    coord.x=1.0*w/2;
-    coord.y=1.0*h/2;
-    
+    maxX=100.0f*w/h;
+    maxY=100.0f;
     glViewport(0, 0, w, h);
     glMatrixMode(GL_PROJECTION);
+    glLoadIdentity();
+    gluPerspective(60,w/h,0.5,1000);
+    glMatrixMode(GL_MODELVIEW);
 }
-
-//------------------------------------ Mouse control ---------------------------------------------------
-static void myMouse(int button, int state, int x,int y)
+//set ground
+void drawGound(void)
 {
-    //control ship direction
-    if (button==GLUT_LEFT_BUTTON && state==GLUT_DOWN)
+    glColor3f(0.2, 0.4, 0.4);
+    glBegin(GL_QUADS);
+    glVertex3f(100, 0, -100);
+    glVertex3f(100, 0, 100);
+    glVertex3f(-100, 0, 100);
+    glVertex3f(-100, 0, -100);
+    glEnd();
+}
+//set sky
+void drawSky(void)
+{
+    GLUquadricObj *sky = gluNewQuadric();
+    glColor3f(0.7, 0.7, 0.9);
+    gluCylinder(sky, 100, 100, 200, 200, 200);
+}
+//set points
+void initPoints(void)
+{
+    pois[0]=setpoint(-16, 30, 0);
+    pois[1]=setpoint(-11, 16, -3);
+    pois[2]=setpoint(-8, 25, -7);
+    pois[3]=setpoint(-3, 26, -8);
+    pois[4]=setpoint(2, 20, -7);
+     pois[6]=setpoint(13, 30, -4);
+    pois[7]=setpoint(16, 25, 1);
+    pois[8]=setpoint(14, 20, 4);
+    pois[9]=setpoint(11, 22, 7);
+    pois[10]=setpoint(7, 12, 6);
+    pois[11]=setpoint(-1, 28, 6);
+    pois[12]=setpoint(-8, 20, 6);
+    pois[13]=setpoint(-12, 25, 5);
+    pois[14]=setpoint(-14, 21, 2);
+    pois[15]=setpoint(-16, 30, 0);
+    pois[16]=setpoint(-11, 16, -3);
+    pois[17]=setpoint(-8, 25, -7);
+    up.x=0,up.y=1,up.z=0;
+}
+//assistant method
+point setpoint(float x,float y,float z)
+{
+    point p;
+    p.x=x;
+    p.y=y;
+    p.z=z;
+    return p;
+}
+//get q(u)
+void curvedegrer1(float x)
+{
+    float t, r0, r1, r2, r3;
+    int ind = floor(x);
+    t = x - ind;
+    r3 = (1.0/6.0) * ((1.0 - t) * (1.0 - t) * (1.0 - t));
+    r2 = (1.0/6.0) * ((3.0 * t * t * t) - (6.0 * t * t) + 4.0);
+    r1 = (1.0/6.0) * ((-3.0 * t * t * t) + (3.0 * t * t) + (3.0 * t) + 1.0);
+    r0 = (1.0/6.0) * (t * t * t);
+    q.x = (r3 * pois[ind].x) + (r2 * pois[ind+1].x) + (r1 * pois[ind+2].x) + (r0 * pois[ind+3].x);
+    q.y = (r3 * pois[ind].y) + (r2 * pois[ind+1].y) + (r1 * pois[ind+2].y) + (r0 * pois[ind+3].y);
+    q.z = (r3 * pois[ind].z) + (r2 * pois[ind+1].z) + (r1 * pois[ind+2].z) + (r0 * pois[ind+3].z);
+    
+}
+//get q'(u)
+void curvedegrer2(float x)
+{
+    float t, r0, r1, r2, r3;
+    int ind = floor(x);
+    t = x - ind;
+    r3 = (-0.5) * ((1.0 - t) * (1.0 - t));
+    r2 = (1.5) * (t * t) - (2.0 * t);
+    r1 = (-1.5) * (t * t) + t + 0.5;
+    r0 = (0.5) * (t * t);
+    qp.x = (r3 * pois[ind].x) + (r2 * pois[ind+1].x) + (r1 * pois[ind+2].x) + (r0 * pois[ind+3].x);
+    qp.y = (r3 * pois[ind].y) + (r2 * pois[ind+1].y) + (r1 * pois[ind+2].y) + (r0 * pois[ind+3].y);
+    qp.z = (r3 * pois[ind].z) + (r2 * pois[ind+1].z) + (r1 * pois[ind+2].z) + (r0 * pois[ind+3].z);
+}
+//get q''(u)
+void curvedegrer3(float x)
     {
-        ship.phi=-(atan2((x-coord.x)-ship.dx*coord.x,(coord.y-y-ship.dy)-ship.dy*coord.y)+atan2(10, 0))*RAD2DEG+90;
-        if (ship.phi<0) {
-            ship.phi=ship.phi+360;
-        }else if(ship.phi>360)
-        {
-            ship.phi=ship.phi-360;
-            ship.phi=ship.phi;
-        }
+        float t, r0, r1, r2, r3;
+        int ind = floor(x);
+        t = x - ind;
+        r3 = (1.0 - t);
+        r2 = (3.0 * t) - 2.0;
+        r1 = (-3.0 * t) + 1.0;
+        r0 = t;
+        qpp.x = (r3 * pois[ind].x) + (r2 * pois[ind+1].x) + (r1 * pois[ind+2].x) + (r0 * pois[ind+3].x);
+        qpp.y = (r3 * pois[ind].y) + (r2 * pois[ind+1].y) + (r1 * pois[ind+2].y) + (r0 * pois[ind+3].y);
+        qpp.z = (r3 * pois[ind].z) + (r2 * pois[ind+1].z) + (r1 * pois[ind+2].z) + (r0 * pois[ind+3].z);
+    }
+
+//get  n,w,v
+void getNWV(void)
+{
+    float x, y;;
+    n.x = -qp.x; n.y = -qp.y; n.z = -qp.z;
+    x = sqrt((qp.x * qp.x) + (qp.y * qp.y) + (qp.z * qp.z));
+    n.x /= x;
+    n.y /= x;
+    n.z /= x;
+    
+    w.x = (up.y * n.z) - (up.z * n.y);
+    w.y = (up.z * n.x) - (up.x * n.z);
+    w.z = (up.x * n.y) - (up.y * n.x);
+    y = sqrt((w.x * w.x) + (w.y * w.y) + (w.z * w.z));
+    w.x /= y;
+    w.y /= y;
+    w.z /= y;
+    v.x = (n.y * w.z) - (n.z * w.y);
+    v.y = (n.z * w.x) - (n.x * w.z);
+    v.z = (n.x * w.y) - (n.y * w.x);
+}
+//shape the curve
+void drawCurve()
+{
+    glBegin(GL_QUAD_STRIP);
+    glColor3f(1, 0.5, 0.0);
+    for(float x = 0.0; x<pointsize-3 ; x += 0.005)
+    {
+        curvedegrer1(x);
+        curvedegrer2(x);
+        getNWV();
+        v.x /= 2.0; v.y /= 2.0; v.z /= 2.0;
+        w.x /= 2.0; w.y /= 2.0; w.z /= 2.0;
+        q.x += 1.5*v.x - 1.5*w.x;
+        q.y += 1.5*v.y - 1.5*w.y;
+        q.z += 1.5*v.z - 1.5*w.z;
+        glVertex3f(q.x + v.x + w.x, q.y + v.y + w.y, q.z + v.z + w.z);
+        glVertex3f(q.x + v.x - w.x, q.y + v.y - w.y, q.z + v.z - w.z);
+      //  printf("%f\n",q.x + v.x + w.x);
+        
+    }
+    glEnd();
+    glBegin(GL_QUAD_STRIP);
+    for(float x = 0.0; x<pointsize-3 ; x += 0.005)
+    {
+        curvedegrer1(x);
+        curvedegrer2(x);
+        getNWV();
+        v.x /= 2.0; v.y /= 2.0; v.z /= 2.0;
+        w.x /= 2.0; w.y /= 2.0; w.z /= 2.0;
+        q.x += 1.5*v.x + 1.5*w.x;
+        q.y += 1.5*v.y + 1.5*w.y;
+        q.z += 1.5*v.z + 1.5*w.z;
+        glVertex3f(q.x + v.x + w.x, q.y + v.y + w.y, q.z + v.z + w.z);
+        glVertex3f(q.x + v.x - w.x, q.y + v.y - w.y, q.z + v.z - w.z);
+        
+    }
+    glEnd();
+    for(float i = 0; i < pointsize-3; i=i+2)
+    {
+        glBegin(GL_QUAD_STRIP);
+        glColor3f(0, 0, 0);
+        curvedegrer1(i);
+        curvedegrer2(i);
+        getNWV();
+        n.x /= 5; n.y /= 5; n.z /= 5;
+        w.x /= 5; w.y /= 5; w.z /= 5;
+        glVertex3f(q.x - n.x + w.x, q.y - n.y + w.y, q.z - n.z + w.z);
+        glVertex3f(q.x - n.x + w.x, -6.0 - n.y + w.y, q.z - n.z + w.z);
+        glVertex3f(q.x + n.x + w.x, q.y + n.y + w.y, q.z + n.z + w.z);
+        glVertex3f(q.x + n.x + w.x, -6.0 + n.y + w.y, q.z + n.z + w.z);
+        glVertex3f(q.x + n.x - w.x, q.y + n.y - w.y, q.z + n.z - w.z);
+        glVertex3f(q.x + n.x - w.x, -6.0 + n.y - w.y, q.z + n.z - w.z);
+        glEnd();
+    }
+    glFlush();
+
+}
+//key control
+static void key(unsigned char key, int x, int y)
+{
+    if (key==' ')
+    {
+        camera++;
+    }
+    if (key=='q')
+    {
+        exit(0);
     }
 }
-
-//math method====================================================================================
-double
-myRandom(double min, double max)
-{
-    double    d;
-    
-    d = min+(max-min)*(rand()%0x7fff)/32767.0;
-    
-    return d;
-}
-
-
-static char* intToChar(int n)
-{
-    int x=log10(n)+1;
-    int i=0;
-    char *array=calloc(x, sizeof(char));
-    for (i=x-1; i>=0; i--,n=n/10) {
-        array[i]='0'+n%10;
-    }
-    return array;
-}
-static double transCoordX(double x,double y,double phi)
-{
-    
-    return x*cos(phi*DEG2RAD)-y*sin(phi*DEG2RAD);
-}
-static double transCoordY(double x,double y,double phi)
-{
-    return y*cos(phi*DEG2RAD)+x*sin(phi*DEG2RAD);
-}
-
-
-
-
-
 
 
 
